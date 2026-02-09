@@ -9,20 +9,19 @@
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400&display=swap');
 
     :root{
-      --bg1:#fff1f7;        /* rose très clair */
-      --bg2:#ffe3ef;        /* rose poudré */
-      --card:#ffffffcc;     /* verre dépoli */
+      --bg1:#fff1f7;
+      --bg2:#ffe3ef;
+      --card:#ffffffcc;
       --text:#3f2a35;
       --rose:#ff5aa5;
       --rose2:#ff8bc4;
       --gold:#f7c7d9;
-      --yes:#ff3f93;        /* bouton oui */
-      --no:#b7a3ae;         /* bouton non (gris rosé) */
+      --yes:#ff3f93;
+      --no:#b7a3ae;
       --shadow: 0 18px 60px rgba(40, 10, 25, 0.12);
       --ring: 0 0 0 6px rgba(255, 90, 165, 0.18);
     }
 
-    /* Respect des préférences d’accessibilité */
     @media (prefers-reduced-motion: reduce) {
       * { animation: none !important; transition: none !important; }
     }
@@ -67,6 +66,31 @@
       100%{ transform: translateY(-15vh) translateX(40px) scale(1.2); opacity:0; }
     }
 
+    /* === Fond : cœurs qui flottent (stylé + léger) === */
+    .floating-hearts{
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1; /* derrière la carte */
+      overflow: hidden;
+    }
+    .fh{
+      position: absolute;
+      top: 110vh;
+      opacity: 0;
+      will-change: transform, opacity;
+      filter: drop-shadow(0 8px 18px rgba(60,10,30,0.10));
+      animation: fh-float linear infinite;
+    }
+    @keyframes fh-float{
+      0%   { transform: translate3d(var(--x), 0, 0) rotate(0deg) scale(var(--s)); opacity: 0; }
+      10%  { opacity: var(--o); }
+      100% { transform: translate3d(calc(var(--x) + var(--drift)), -140vh, 0) rotate(var(--r)) scale(var(--s)); opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce){
+      .fh{ display:none !important; }
+    }
+
     .container{
       width: min(420px, 92vw);
       padding: 2.6rem 2.2rem;
@@ -78,9 +102,12 @@
       position:relative;
       z-index: 10;
       border: 1px solid rgba(255, 255, 255, 0.55);
+
+      /* Parallax premium */
+      transform: translateZ(0);
+      will-change: transform;
     }
 
-    /* Petit liseré “glow” */
     .container::before{
       content:"";
       position:absolute;
@@ -136,6 +163,9 @@
       transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
       user-select:none;
       outline:none;
+
+      /* évite les interactions bizarres mobile */
+      touch-action: manipulation;
     }
 
     button:focus-visible{
@@ -146,8 +176,29 @@
       background: linear-gradient(135deg, var(--yes), var(--rose2));
       color:#fff;
       box-shadow: 0 10px 26px rgba(255, 63, 147, 0.28);
+
+      position: relative;
+      overflow: hidden;
     }
     #btn-yes:hover{ transform: translateY(-2px) scale(1.03); filter: brightness(1.03); }
+
+    /* Glint (brillance) sur Oui */
+    #btn-yes::after{
+      content:"";
+      position:absolute;
+      inset:-40%;
+      background: linear-gradient(120deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%);
+      transform: translateX(-60%) rotate(10deg);
+      opacity: 0.0;
+      transition: opacity 180ms ease;
+    }
+    #btn-yes:hover::after{
+      opacity: 0.9;
+      animation: glint 900ms ease forwards;
+    }
+    @keyframes glint{
+      to { transform: translateX(60%) rotate(10deg); opacity: 0; }
+    }
 
     #btn-no{
       background: linear-gradient(135deg, var(--no), #d8cbd2);
@@ -197,24 +248,6 @@
       to { transform: translateY(120vh) rotate(18deg); opacity:0; }
     }
 
-    /* Petit “badge” discret */
-    .tag{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(255, 90, 165, 0.10);
-      border: 1px solid rgba(255, 90, 165, 0.18);
-      font-size: 0.88rem;
-      margin-bottom: 12px;
-    }
-    .dot{
-      width: 8px; height:8px; border-radius: 999px;
-      background: var(--rose);
-      box-shadow: 0 0 0 6px rgba(255,90,165,0.14);
-    }
-
     @media (max-width: 500px){
       .container{ padding: 2rem 1.5rem; }
       h1{ font-size: 1.55rem; }
@@ -222,13 +255,15 @@
     }
   </style>
 </head>
-<body>
 
+<body>
   <!-- fond animé -->
   <div class="ambient" id="ambient"></div>
 
-  <div class="container">
+  <!-- cœurs flottants en fond -->
+  <div class="floating-hearts" id="floating-hearts"></div>
 
+  <div class="container">
     <h1 id="main-text">Tatiana, tu veux être ma valentine ?</h1>
     <div class="subtitle">Alors ? Stylé ? par contre je rigole hyn, ou pas....</div>
 
@@ -249,6 +284,10 @@
     const mainText = document.getElementById('main-text');
     const successMessage = document.getElementById('success-message');
     const ambient = document.getElementById('ambient');
+    const floating = document.getElementById('floating-hearts');
+
+    // Reduced motion
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     // === Sons (WebAudio, sans fichiers externes) ===
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -272,14 +311,12 @@
     }
 
     function whoosh() {
-      // Petit bruit “fuite” : glissando rapide
       beep({ type:'triangle', freq:620, dur:0.06, gain:0.03 });
       setTimeout(() => beep({ type:'triangle', freq:420, dur:0.07, gain:0.028 }), 40);
       setTimeout(() => beep({ type:'triangle', freq:260, dur:0.08, gain:0.025 }), 90);
     }
 
     function yay() {
-      // Petit “ta-da” rose bonbon
       beep({ type:'sine', freq:523.25, dur:0.09, gain:0.045 }); // C5
       setTimeout(() => beep({ type:'sine', freq:659.25, dur:0.10, gain:0.045 }), 95); // E5
       setTimeout(() => beep({ type:'sine', freq:783.99, dur:0.12, gain:0.05 }), 200); // G5
@@ -312,64 +349,98 @@
     }
     spawnAmbient();
 
-    // === Bouton NON qui s’échappe (mais sans sortir de l’écran) ===
-function moveButton() {
-  const rectBtn = btnNo.getBoundingClientRect();
-  const btnWidth = rectBtn.width || btnNo.offsetWidth;
-  const btnHeight = rectBtn.height || btnNo.offsetHeight;
+    // === Cœurs en fond (fluide + léger) ===
+    function spawnFloatingHeart() {
+      if (!floating || reduceMotion) return;
 
-  const margin = 18;
+      const el = document.createElement('div');
+      el.className = 'fh';
 
-  // Utilise visualViewport si disponible (super important sur mobile)
-  const vv = window.visualViewport;
+      const emojis = ['❤','💖','💗','💕','💞','✨'];
+      el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
 
-  const viewLeft = vv ? vv.offsetLeft : 0;
-  const viewTop  = vv ? vv.offsetTop  : 0;
-  const viewW    = vv ? vv.width      : window.innerWidth;
-  const viewH    = vv ? vv.height     : window.innerHeight;
+      const x = Math.random() * 100;                 // vw
+      const s = Math.random() * 0.9 + 0.55;          // scale
+      const o = Math.random() * 0.35 + 0.15;         // opacity
+      const drift = (Math.random() * 120 - 60) + 'px';
+      const r = (Math.random() * 40 - 20) + 'deg';
+      const dur = (Math.random() * 7 + 8);           // 8-15s
+      const size = (Math.random() * 18 + 12) + 'px';
 
-  // Bornes "safe"
-  const minX = viewLeft + margin;
-  const minY = viewTop + margin;
-  const maxX = viewLeft + viewW - btnWidth - margin;
-  const maxY = viewTop + viewH - btnHeight - margin;
+      el.style.left = x + 'vw';
+      el.style.fontSize = size;
 
-  // Si écran trop petit, on évite NaN / négatifs
-  const safeMaxX = Math.max(minX, maxX);
-  const safeMaxY = Math.max(minY, maxY);
+      el.style.setProperty('--x', '0px');
+      el.style.setProperty('--drift', drift);
+      el.style.setProperty('--s', s);
+      el.style.setProperty('--o', o);
+      el.style.setProperty('--r', r);
+      el.style.animationDuration = dur + 's';
 
-  let x = minX + Math.random() * (safeMaxX - minX);
-  let y = minY + Math.random() * (safeMaxY - minY);
-
-  // Positionnement
-  btnNo.style.position = 'fixed';
-  btnNo.style.left = `${x}px`;
-  btnNo.style.top = `${y}px`;
-
-  // Double sécurité : on reclamp après que le navigateur ait rendu
-  requestAnimationFrame(() => {
-    const r = btnNo.getBoundingClientRect();
-
-    let dx = 0, dy = 0;
-    if (r.left < margin) dx = margin - r.left;
-    if (r.top < margin) dy = margin - r.top;
-    if (r.right > (viewW - margin)) dx = (viewW - margin) - r.right;
-    if (r.bottom > (viewH - margin)) dy = (viewH - margin) - r.bottom;
-
-    if (dx || dy) {
-      const curLeft = parseFloat(btnNo.style.left) || 0;
-      const curTop = parseFloat(btnNo.style.top) || 0;
-      btnNo.style.left = `${curLeft + dx}px`;
-      btnNo.style.top = `${curTop + dy}px`;
+      floating.appendChild(el);
+      setTimeout(() => el.remove(), (dur * 1000) + 500);
     }
-  });
 
-  if (navigator.vibrate) navigator.vibrate(25);
-  if (typeof whoosh === "function") whoosh();
-}
+    if (!reduceMotion) {
+      setInterval(spawnFloatingHeart, 420);
+      for (let i = 0; i < 10; i++) setTimeout(spawnFloatingHeart, i * 140);
+    }
 
+    // === Bouton NON qui s’échappe (mais sans sortir de l’écran) ===
+    function moveButton() {
+      const rectBtn = btnNo.getBoundingClientRect();
+      const btnWidth = rectBtn.width || btnNo.offsetWidth;
+      const btnHeight = rectBtn.height || btnNo.offsetHeight;
 
-    
+      const margin = 18;
+      const vv = window.visualViewport;
+
+      const viewLeft = vv ? vv.offsetLeft : 0;
+      const viewTop  = vv ? vv.offsetTop  : 0;
+      const viewW    = vv ? vv.width      : window.innerWidth;
+      const viewH    = vv ? vv.height     : window.innerHeight;
+
+      const minX = viewLeft + margin;
+      const minY = viewTop + margin;
+      const maxX = viewLeft + viewW - btnWidth - margin;
+      const maxY = viewTop + viewH - btnHeight - margin;
+
+      const safeMaxX = Math.max(minX, maxX);
+      const safeMaxY = Math.max(minY, maxY);
+
+      let x = minX + Math.random() * (safeMaxX - minX);
+      let y = minY + Math.random() * (safeMaxY - minY);
+
+      btnNo.style.position = 'fixed';
+      btnNo.style.left = `${x}px`;
+      btnNo.style.top = `${y}px`;
+
+      requestAnimationFrame(() => {
+        const r = btnNo.getBoundingClientRect();
+
+        let dx = 0, dy = 0;
+
+        const leftBound   = viewLeft + margin;
+        const topBound    = viewTop + margin;
+        const rightBound  = viewLeft + viewW - margin;
+        const bottomBound = viewTop + viewH - margin;
+
+        if (r.left < leftBound) dx = leftBound - r.left;
+        if (r.top < topBound) dy = topBound - r.top;
+        if (r.right > rightBound) dx = rightBound - r.right;
+        if (r.bottom > bottomBound) dy = bottomBound - r.bottom;
+
+        if (dx || dy) {
+          const curLeft = parseFloat(btnNo.style.left) || 0;
+          const curTop = parseFloat(btnNo.style.top) || 0;
+          btnNo.style.left = `${curLeft + dx}px`;
+          btnNo.style.top = `${curTop + dy}px`;
+        }
+      });
+
+      if (navigator.vibrate) navigator.vibrate(25);
+      if (typeof whoosh === "function") whoosh();
+    }
 
     btnNo.addEventListener('mouseover', moveButton);
     btnNo.addEventListener('touchstart', (e) => {
@@ -394,7 +465,7 @@ function moveButton() {
       createHearts(28);
     });
 
-    // === Pluie de coeurs (plus jolie) ===
+    // === Pluie de coeurs ===
     function createHearts(n = 20) {
       const emojis = ['❤️','💖','💗','💕','💞','✨'];
 
@@ -413,11 +484,35 @@ function moveButton() {
         heart.style.transform = `translateX(${drift}px) rotate(${Math.random()*20-10}deg)`;
 
         document.body.appendChild(heart);
-
-        // cleanup
         setTimeout(() => heart.remove(), 3200);
       }
     }
+
+    // === Parallax doux sur la carte (premium) ===
+    const card = document.querySelector('.container');
+    let rafId = null;
+
+    function onMove(e){
+      if (!card || reduceMotion) return;
+
+      const x = (e.clientX / window.innerWidth) - 0.5;
+      const y = (e.clientY / window.innerHeight) - 0.5;
+
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        card.style.transform =
+          `rotateX(${(-y*4).toFixed(2)}deg) rotateY(${(x*6).toFixed(2)}deg) translateY(-1px)`;
+      });
+    }
+
+    function resetCard(){
+      if (!card) return;
+      card.style.transform = 'rotateX(0deg) rotateY(0deg)';
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerleave', resetCard);
+    window.addEventListener('blur', resetCard);
   </script>
 </body>
 </html>
